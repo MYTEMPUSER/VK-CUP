@@ -25,10 +25,17 @@
 
 using namespace std;
 
+struct people
+{
+	int xs, ys, xf, yf, ind, time;
+	people(int xs, int ys, int xf, int yf, int ind, int time) : xs(xs), ys(ys), xf(xf), yf(yf), ind(ind), time(time){};
+};
 
 struct people_data
 {
 	long long int T_in, T_out, T_start, T_best;
+	people P;
+	people_data() : T_in(0), T_out(0), T_start(0), T_best(0), P(people(0, 0, 0, 0, 0, 0)){}
 };
 
 struct step
@@ -44,11 +51,7 @@ struct TAXI
 	TAXI() : x(0), y(0), free_places(4){}
 };
 
-struct people
-{
-	int xs, ys, xf, yf, ind, time;
-	people(int xs, int ys, int xf, int yf, int ind, int time) : xs(xs), ys(ys), xf(xf), yf(yf), ind(ind), time(time){};
-};
+
 
 int delta_to_make_everyone_unhappy_happy = 500;
 int size_coef_to_make_everyone_unhappy_happy = 10;
@@ -88,24 +91,67 @@ void kik_passenger(int index)
 
 
 
-int calc_profit(TAXI T, deque<step> GO)
+double calc_profit_main(int ind)
 {
+	return 0;
+	TAXI T = taxi[ind];
+	deque<step> GO = go[ind];
 	int dist = 0;
+	double res = 0;
+	int new_T = 0;
 	for (int i = 0; i < GO.size(); i++)
 	{
 		if (i == 0)
-		{
 			dist += abs(T.x - GO[i].x) + abs(T.y + GO[i].y);
-			int new_T = global_time + dist;
-
-		}
+		else
+			dist += abs(GO[i - 1].x - GO[i].x) + abs(GO[i - 1].y + GO[i].y);
+		new_T = global_time + dist;
+		if (GO[i].type > 0)
+			p_d[GO[i].type - 1].T_in = new_T;
 		else
 		{
-			dist += abs(GO[i - 1].x - GO[i].x) + abs(GO[i - 1].y + GO[i].y);
+			res += (1 - (sqr(p_d[GO[i].type - 1].T_in - p_d[GO[i].type - 1].T_start + 0.0) +
+				sqr(p_d[i].T_best - new_T + p_d[i].T_in)) / 10000000.0) * 
+				(abs(p_d[GO[i].type - 1].P.xs - p_d[GO[i].type - 1].P.xf) + abs(p_d[GO[i].type - 1].P.ys - p_d[GO[i].type - 1].P.yf));
 		}
 	}
-	return 1;
+	return res;
 }
+
+
+double calc_profit_all(int ind)
+{
+	return 0;
+	TAXI T = taxi[ind];
+	deque<step> GO = go[ind];
+	for (int i = 0; i < additional_go[ind].size(); i++)
+	{
+		GO.push_back(additional_go[ind].front());
+		additional_go[ind].push_back(additional_go[ind].front());
+		additional_go[ind].pop_front();
+	}
+	int dist = 0;
+	double res = 0;
+	int new_T = 0;
+	for (int i = 0; i < GO.size(); i++)
+	{
+		if (i == 0)
+			dist += abs(T.x - GO[i].x) + abs(T.y + GO[i].y);
+		else
+			dist += abs(GO[i - 1].x - GO[i].x) + abs(GO[i - 1].y + GO[i].y);
+		new_T = global_time + dist;
+		if (GO[i].type > 0)
+			p_d[GO[i].type - 1].T_in = new_T;
+		else
+		{
+			res += (1 - (sqr(p_d[GO[i].type - 1].T_in - p_d[GO[i].type - 1].T_start + 0.0) +
+				sqr(p_d[i].T_best - new_T + p_d[i].T_in)) / 10000000.0) *
+				(abs(p_d[GO[i].type - 1].P.xs - p_d[GO[i].type - 1].P.xf) + abs(p_d[GO[i].type - 1].P.ys - p_d[GO[i].type - 1].P.yf));
+		}
+	}
+	return res;
+}
+
 
 void print_all()
 {
@@ -153,7 +199,6 @@ void simulate(int delta_t)
 						if (go[i].front().type > 0)
 						{
 							p_d[abs(go[i].front().type) - 1].T_in = global_time - T + delta_t;
-							///penalty[]
 						}
 					go[i].pop_front();
 				}
@@ -231,8 +276,14 @@ void simulate(int delta_t)
 
 void make_everyone_unhappy_happy()
 {
+	double result_T[1000];
+
 	for (int j = 0; j < n; j++)
+	{
 		additional_go[j].clear();
+		result_T[j] = calc_profit_main(j);
+	}
+
 	for (int i = P.size() - 1; i >= 0; i--)
 	{
 
@@ -241,9 +292,11 @@ void make_everyone_unhappy_happy()
 		for (int j = 0; j < n; j++)
 		{
 			double delta = (1 - sqr(global_time - P[i].time + 0.0) / 10000000.0);
-
+			additional_go[j].push_back(step(P[i].xs, P[i].ys, P[i].ind));
+			additional_go[j].push_back(step(P[i].xf, P[i].yf, -P[i].ind));
 			if (delta > delta_border)
 			{
+
 				if (go[j].size() == 0)
 				{
 					if (abs(taxi[j].x - P[i].xs) + abs(taxi[j].y - P[i].ys) < best)
@@ -268,11 +321,14 @@ void make_everyone_unhappy_happy()
 							best = abs(additional_go[j].back().x - P[i].xs) + abs(additional_go[j].back().y - P[i].ys) + (go[j].size() + additional_go[j].size()) * (w + h) / size_coef_to_make_everyone_unhappy_happy;
 						}
 			}
+			additional_go[j].pop_back();
+			additional_go[j].pop_back();
 		}
 		if (ind != -1)
 		{
 			additional_go[ind].push_back(step(P[i].xs, P[i].ys, P[i].ind));
 			additional_go[ind].push_back(step(P[i].xf, P[i].yf, -P[i].ind));
+			result_T[ind] = calc_profit_all(ind);
 		}
 	}
 }
@@ -435,6 +491,7 @@ int main(int argc, char *argv[])
 			p_d[ind - 1].T_best = abs(xs - xf) + abs(ys - yf);
 			simulate(t - global_time);
 			P.push_back(people(xs, ys, xf, yf, ind, t));
+			p_d[ind].P = P.back();
 			TT = t;
 		}
 		delta_t = max(t - global_time, delta_t);
